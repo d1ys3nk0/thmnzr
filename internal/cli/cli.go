@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/d1ys3nk0/thmnzr/internal/input"
@@ -26,6 +27,7 @@ type options struct {
 	showAttrs   bool
 	truncate    bool
 	noDedup     bool
+	format      render.Format
 	save        *string
 }
 
@@ -140,10 +142,12 @@ func humanize(client spanClient, opts options) (string, string, error) {
 
 	md := render.Markdown(tree, flat, render.Options{
 		Title:          title,
+		Format:         opts.format,
 		ShowAttrs:      opts.showAttrs || opts.showOutputs,
 		ShowOutputs:    opts.showOutputs,
 		ShowInputs:     opts.showInputs,
 		Truncate:       opts.truncate,
+		WrapWidth:      terminalWidth(),
 		NewMessagesMap: newMessagesMap,
 	})
 	return md, traceID, nil
@@ -156,6 +160,7 @@ func parseArgs(args []string) (options, error) {
 		server:     firstString(os.Getenv("PHOENIX_COLLECTOR_ENDPOINT"), defaultServer),
 		apiKey:     os.Getenv("PHOENIX_API_KEY"),
 		showInputs: true,
+		format:     render.FormatASCII,
 	}
 
 	positionals := []string{}
@@ -174,7 +179,7 @@ func parseArgs(args []string) (options, error) {
 			opts.truncate = true
 		case arg == "--no-dedup":
 			opts.noDedup = true
-		case arg == "--server" || arg == "--api-key" || arg == "--project-id":
+		case arg == "--server" || arg == "--api-key" || arg == "--project-id" || arg == "--format" || arg == "-f":
 			value, err := nextValue(args, &i, arg)
 			if err != nil {
 				return opts, err
@@ -186,6 +191,12 @@ func parseArgs(args []string) (options, error) {
 				opts.apiKey = value
 			case "--project-id":
 				opts.projectID = value
+			case "--format", "-f":
+				format, err := parseFormat(value)
+				if err != nil {
+					return opts, err
+				}
+				opts.format = format
 			}
 		case strings.HasPrefix(arg, "--server="):
 			opts.server = strings.TrimPrefix(arg, "--server=")
@@ -193,6 +204,12 @@ func parseArgs(args []string) (options, error) {
 			opts.apiKey = strings.TrimPrefix(arg, "--api-key=")
 		case strings.HasPrefix(arg, "--project-id="):
 			opts.projectID = strings.TrimPrefix(arg, "--project-id=")
+		case strings.HasPrefix(arg, "--format="):
+			format, err := parseFormat(strings.TrimPrefix(arg, "--format="))
+			if err != nil {
+				return opts, err
+			}
+			opts.format = format
 		case arg == "--save" || arg == "-s":
 			value := ""
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
@@ -225,6 +242,17 @@ func nextValue(args []string, index *int, option string) (string, error) {
 	return args[*index], nil
 }
 
+func parseFormat(value string) (render.Format, error) {
+	switch render.Format(value) {
+	case render.FormatASCII:
+		return render.FormatASCII, nil
+	case render.FormatPlain:
+		return render.FormatPlain, nil
+	default:
+		return "", fmt.Errorf("unsupported format %q; expected ascii or plain", value)
+	}
+}
+
 func usage() string {
 	return `Usage:
   thmnzr [options] TRACE_URL_OR_ID
@@ -237,6 +265,7 @@ Options:
       --api-key KEY          Phoenix API key. Defaults to PHOENIX_API_KEY.
       --project-id ID        Project ID if it is not present in the input URL.
   -o, --show-outputs         Show tool/LLM outputs.
+  -f, --format FORMAT        Output format: ascii or plain. Defaults to ascii.
       --show-inputs          Show inputs. Enabled by default.
       --show-attrs           Show input/model attributes for spans.
       --truncate             Truncate long messages.
@@ -252,4 +281,16 @@ func firstString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func terminalWidth() int {
+	columns := strings.TrimSpace(os.Getenv("COLUMNS"))
+	if columns == "" {
+		return 0
+	}
+	width, err := strconv.Atoi(columns)
+	if err != nil {
+		return 0
+	}
+	return width
 }

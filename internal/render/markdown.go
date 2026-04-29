@@ -6,22 +6,37 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/d1ys3nk0/thmnzr/internal/trace"
 )
 
 const truncateLen = 200
+const defaultWrapWidth = 100
+
+type Format string
+
+const (
+	FormatASCII Format = "ascii"
+	FormatPlain Format = "plain"
+)
 
 type Options struct {
 	Title          string
+	Format         Format
 	ShowAttrs      bool
 	ShowOutputs    bool
 	ShowInputs     bool
 	Truncate       bool
+	WrapWidth      int
 	NewMessagesMap map[string][]map[string]any
 }
 
 func Markdown(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string {
+	if opts.Format == FormatPlain {
+		return renderPlain(tree, flatSpans, opts)
+	}
+
 	children := tree.Children
 	spans := make([]trace.Span, 0, len(flatSpans))
 	for _, flat := range flatSpans {
@@ -80,11 +95,11 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 	}
 	metrics := formatMetrics(totalTime, totalTokens) + statusString
 
-	treeChar := "├── "
+	treeChar := "+-- "
 	if depth == 0 {
-		treeChar = "┌── "
+		treeChar = "+-- "
 	} else if isLast {
-		treeChar = "└── "
+		treeChar = "`-- "
 	}
 	nodePrefix := ""
 	if depth >= 2 {
@@ -105,20 +120,20 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 		if isLast {
 			childCont = "   "
 		} else {
-			childCont = "│  "
+			childCont = "|  "
 		}
 	} else {
 		childCont = prefix
 		if isLast {
 			childCont += "   "
 		} else {
-			childCont += "│  "
+			childCont += "|  "
 		}
 	}
 
 	if opts.ShowAttrs {
 		for _, attrLine := range formatAttrs(span, opts.ShowOutputs, opts.ShowInputs, opts.Truncate) {
-			lines = append(lines, fmt.Sprintf("%s│  %s", childCont, attrLine))
+			lines = appendWrappedTreeText(lines, fmt.Sprintf("%s|  ", childCont), "", "  ", attrLine, opts.WrapWidth)
 		}
 	}
 
@@ -132,7 +147,8 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 			if opts.Truncate {
 				content = truncate(content, 150)
 			}
-			lines = append(lines, fmt.Sprintf("%s│  → %s: %s", childCont, role, content))
+			label := fmt.Sprintf("-> %s: ", role)
+			lines = appendWrappedTreeText(lines, fmt.Sprintf("%s|  ", childCont), label, strings.Repeat(" ", utf8.RuneCountInString(label)), content, opts.WrapWidth)
 		}
 	}
 
@@ -148,6 +164,194 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 	}
 
 	return lines
+}
+
+func renderPlain(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string {
+	children := tree.Children
+	spans := make([]trace.Span, 0, len(flatSpans))
+	for _, flat := range flatSpans {
+		spans = append(spans, flat.Span)
+	}
+
+	startTime, endTime, totalMS := traceTimes(spans)
+	rootSpans := children[trace.RootID]
+	totalTokens := 0
+	for _, span := range rootSpans {
+		totalTokens += totalTokensInTree(children, span, map[string]bool{})
+	}
+
+	title := opts.Title
+	if title == "" {
+		title = "Agent Trace"
+	}
+
+	lines := []string{"trace: " + title}
+	lines = append(lines, "total_time: "+formatTimeMS(totalMS))
+	if totalTokens > 0 {
+		lines = append(lines, fmt.Sprintf("total_tokens: %d", totalTokens))
+	}
+	if !startTime.IsZero() {
+		lines = append(lines, "started: "+startTime.Format("2006-01-02 15:04:05"))
+	}
+	if !endTime.IsZero() {
+		lines = append(lines, "finished: "+endTime.Format("2006-01-02 15:04:05"))
+	}
+	lines = append(lines, "", "spans:")
+
+	for _, span := range rootSpans {
+		lines = append(lines, renderPlainNode(span, children, 0, opts, map[string]bool{})...)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func renderPlainNode(span trace.Span, children map[string][]trace.Span, depth int, opts Options, visited map[string]bool) []string {
+	name := trace.GetName(span)
+	if name == "" {
+		name = "unnamed"
+	}
+	kind := trace.GetSpanKind(span)
+	spanID := trace.GetID(span)
+	totalTime, totalTokens := computeSubtreeStats(span, children, map[string]bool{})
+	status := trace.GetStatusCode(span)
+
+	indent := strings.Repeat("  ", depth)
+	parts := []string{
+		fmt.Sprintf("name=%q", name),
+		"duration=" + formatTimeMS(totalTime),
+	}
+	if totalTokens > 0 {
+		parts = append(parts, fmt.Sprintf("tokens=%d", totalTokens))
+	}
+	if kind != "" {
+		parts = append(parts, "kind="+kind)
+	}
+	if status != "" && status != "UNSET" && status != "OK" {
+		parts = append(parts, "status="+status)
+	}
+	if spanID != "" {
+		parts = append(parts, "span_id="+prefixString(spanID, 8))
+	}
+
+	lines := []string{indent + "- " + strings.Join(parts, " ")}
+	detailPrefix := indent + "  "
+	if opts.ShowAttrs {
+		for _, attrLine := range formatAttrs(span, opts.ShowOutputs, opts.ShowInputs, opts.Truncate) {
+			lines = appendWrappedTreeText(lines, detailPrefix, "", "  ", attrLine, opts.WrapWidth)
+		}
+	}
+	if opts.NewMessagesMap != nil {
+		for _, msg := range opts.NewMessagesMap[spanID] {
+			role := stringValue(msg["role"])
+			if role == "" {
+				role = "unknown"
+			}
+			content := contentString(msg["content"])
+			if opts.Truncate {
+				content = truncate(content, 150)
+			}
+			label := fmt.Sprintf("message role=%s content=", role)
+			lines = appendWrappedTreeText(lines, detailPrefix, label, strings.Repeat(" ", utf8.RuneCountInString(label)), content, opts.WrapWidth)
+		}
+	}
+
+	if spanID != "" {
+		if visited[spanID] {
+			return lines
+		}
+		visited[spanID] = true
+	}
+	for _, child := range children[spanID] {
+		lines = append(lines, renderPlainNode(child, children, depth+1, opts, visited)...)
+	}
+	return lines
+}
+
+func appendWrappedTreeText(lines []string, prefix, label, continuationIndent, content string, width int) []string {
+	width = normalizedWrapWidth(width)
+	text := strings.ReplaceAll(content, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	paragraphs := strings.Split(text, "\n")
+	for i, paragraph := range paragraphs {
+		if i == 0 {
+			lines = appendWrappedLine(lines, prefix+label, prefix+continuationIndent, paragraph, width)
+			continue
+		}
+		lines = appendWrappedLine(lines, prefix+continuationIndent, prefix+continuationIndent, paragraph, width)
+	}
+	return lines
+}
+
+func appendWrappedLine(lines []string, firstPrefix, nextPrefix, text string, width int) []string {
+	available := width - utf8.RuneCountInString(firstPrefix)
+	if available < 1 {
+		available = 1
+	}
+	chunks := wrapText(text, available)
+	if len(chunks) == 0 {
+		return append(lines, firstPrefix)
+	}
+	lines = append(lines, firstPrefix+chunks[0])
+	for _, chunk := range chunks[1:] {
+		available := width - utf8.RuneCountInString(nextPrefix)
+		if available < 1 {
+			available = 1
+		}
+		for _, nestedChunk := range wrapText(chunk, available) {
+			lines = append(lines, nextPrefix+nestedChunk)
+		}
+	}
+	return lines
+}
+
+func wrapText(text string, width int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	words := strings.Fields(text)
+	lines := []string{}
+	current := ""
+	for _, word := range words {
+		for utf8.RuneCountInString(word) > width {
+			if current != "" {
+				lines = append(lines, current)
+				current = ""
+			}
+			head, tail := splitRunes(word, width)
+			lines = append(lines, head)
+			word = tail
+		}
+		if current == "" {
+			current = word
+			continue
+		}
+		if utf8.RuneCountInString(current)+1+utf8.RuneCountInString(word) <= width {
+			current += " " + word
+			continue
+		}
+		lines = append(lines, current)
+		current = word
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func splitRunes(text string, count int) (string, string) {
+	runes := []rune(text)
+	return string(runes[:count]), string(runes[count:])
+}
+
+func normalizedWrapWidth(width int) int {
+	if width <= 0 {
+		return defaultWrapWidth
+	}
+	if width < 40 {
+		return 40
+	}
+	return width
 }
 
 func formatAttrs(span trace.Span, showOutputs, showInputs, shouldTruncate bool) []string {

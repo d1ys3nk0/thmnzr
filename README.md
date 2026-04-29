@@ -9,7 +9,8 @@ agent traces without clicking through the Phoenix UI.
 
 - Accepts a Phoenix trace URL, span URL, or raw trace ID.
 - Fetches spans from the Phoenix HTTP API.
-- Renders a Markdown trace summary and span tree.
+- Renders an ASCII Markdown trace summary and span tree by default.
+- Supports a dense plain format for AI agent consumption.
 - Shows LLM/tool inputs by default.
 - Optionally shows outputs and model attributes.
 - Deduplicates repeated LLM messages across chronological LLM spans.
@@ -66,6 +67,12 @@ Save output:
 thmnzr --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save trace.md
 ```
 
+Use dense plain output for AI agents:
+
+```bash
+thmnzr --project-id default --format plain 6eee3b57c1bf0ea5db5eae9d56362bdc
+```
+
 Generate the output filename from the trace ID:
 
 ```bash
@@ -84,6 +91,7 @@ Options:
       --api-key KEY          Phoenix API key.
       --project-id ID        Project ID if it is not present in the input URL.
   -o, --show-outputs         Show tool/LLM outputs.
+  -f, --format FORMAT        Output format: ascii or plain. Defaults to ascii.
       --show-inputs          Show inputs. Enabled by default.
       --show-attrs           Show input/model attributes for spans.
       --truncate             Truncate long messages.
@@ -130,7 +138,7 @@ Because the image does not override the entrypoint, CI job scripts can call
 
 ## Output
 
-`thmnzr` prints Markdown to stdout by default:
+`thmnzr` prints ASCII Markdown to stdout by default:
 
 - trace title
 - total time
@@ -138,6 +146,9 @@ Because the image does not override the entrypoint, CI job scripts can call
 - start and finish timestamps when available
 - span tree with timing, token, status, kind, and short span IDs
 - selected span inputs, outputs, model names, and deduplicated LLM messages
+
+Use `-f plain` or `--format plain` for a denser key/value output optimized for
+AI agents and other text parsers.
 
 Errors are printed to stderr and return a non-zero exit code.
 

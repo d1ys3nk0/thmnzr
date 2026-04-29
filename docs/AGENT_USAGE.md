@@ -34,6 +34,12 @@ Save a Markdown artifact with a deterministic name:
 thmnzr --server http://localhost:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save trace.md
 ```
 
+Prefer dense plain output when the result will be consumed by an AI agent:
+
+```bash
+thmnzr --server http://localhost:6007 --project-id default --format plain 6eee3b57c1bf0ea5db5eae9d56362bdc
+```
+
 Save with the trace ID as the filename:
 
 ```bash
@@ -79,7 +85,8 @@ docker run --rm -i \
 
 On success:
 
-- stdout contains Markdown unless `--save` is used
+- stdout contains ASCII Markdown unless `--save` is used
+- with `--format plain`, stdout contains dense key/value text optimized for AI agents
 - with `--save`, stdout contains `Wrote N chars to FILE`
 - stderr is empty
 - exit code is `0`

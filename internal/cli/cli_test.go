@@ -34,6 +34,23 @@ func TestParseArgsSaveWithoutValue(t *testing.T) {
 	}
 }
 
+func TestParseArgsFormatPlain(t *testing.T) {
+	got, err := parseArgs([]string{"--project-id", "project", "-f", "plain", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.format != "plain" {
+		t.Fatalf("format = %q", got.format)
+	}
+}
+
+func TestParseArgsRejectsUnknownFormat(t *testing.T) {
+	_, err := parseArgs([]string{"--project-id", "project", "--format", "json", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	if err == nil || !strings.Contains(err.Error(), "unsupported format") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestHumanizeRendersTrace(t *testing.T) {
 	span := trace.Span{
 		"name":       "root",
@@ -88,7 +105,7 @@ func TestHumanizeNoDedupRendersRepeatedLLMMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count := strings.Count(md, "→ user: same prompt"); count != 2 {
+	if count := strings.Count(md, "-> user: same prompt"); count != 2 {
 		t.Fatalf("message count = %d:\n%s", count, md)
 	}
 }
@@ -118,7 +135,7 @@ func TestHumanizeDedupUsesSpanIDAcrossTreeOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(md, "→ system: instructions") {
+	if !strings.Contains(md, "-> system: instructions") {
 		t.Fatalf("markdown missing message:\n%s", md)
 	}
 }
