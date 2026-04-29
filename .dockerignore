@@ -1,0 +1,10 @@
+.git
+.github
+bin
+.pytest_cache
+.ruff_cache
+.venv
+.uv-cache
+__pycache__
+*.pyc
+6eee3b57c1bf0ea5db5eae9d56362bdc.md
