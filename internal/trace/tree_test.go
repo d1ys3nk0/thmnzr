@@ -47,3 +47,26 @@ func TestDeduplicateMessages(t *testing.T) {
 		t.Fatalf("second new messages = %#v", got[1])
 	}
 }
+
+func TestGetLLMMessagesFromOpenInferenceAttributes(t *testing.T) {
+	span := Span{
+		"name": "openrouter.chat",
+		"attributes": map[string]any{
+			"llm.input_messages.1.message.role":    "user",
+			"llm.input_messages.1.message.content": "extract this",
+			"llm.input_messages.0.message.role":    "system",
+			"llm.input_messages.0.message.content": "follow instructions",
+		},
+	}
+
+	got := GetLLMMessages(span)
+	if len(got) != 2 {
+		t.Fatalf("messages = %#v", got)
+	}
+	if got[0]["role"] != "system" || got[0]["content"] != "follow instructions" {
+		t.Fatalf("first message = %#v", got[0])
+	}
+	if got[1]["role"] != "user" || got[1]["content"] != "extract this" {
+		t.Fatalf("second message = %#v", got[1])
+	}
+}

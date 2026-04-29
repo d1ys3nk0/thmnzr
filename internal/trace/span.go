@@ -3,7 +3,9 @@ package trace
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -93,6 +95,11 @@ func GetTokenCount(span Span) int {
 }
 
 func GetLLMMessages(span Span) []map[string]any {
+	attrs := GetAttributes(span)
+	if messages := flatAttributeMessages(attrs, "llm.input_messages."); len(messages) > 0 {
+		return messages
+	}
+
 	input := GetInput(span)
 	if raw, ok := input.(string); ok {
 		var decoded any
@@ -112,6 +119,49 @@ func GetLLMMessages(span Span) []map[string]any {
 		return messages
 	}
 	return nil
+}
+
+func flatAttributeMessages(attrs map[string]any, prefix string) []map[string]any {
+	type indexedMessage struct {
+		index   int
+		message map[string]any
+	}
+
+	byIndex := map[int]map[string]any{}
+	for key, value := range attrs {
+		remainder, ok := strings.CutPrefix(key, prefix)
+		if !ok {
+			continue
+		}
+		indexRaw, fieldPath, ok := strings.Cut(remainder, ".message.")
+		if !ok {
+			continue
+		}
+		index, err := strconv.Atoi(indexRaw)
+		if err != nil {
+			continue
+		}
+		message := byIndex[index]
+		if message == nil {
+			message = map[string]any{}
+			byIndex[index] = message
+		}
+		message[fieldPath] = value
+	}
+
+	messages := make([]indexedMessage, 0, len(byIndex))
+	for index, message := range byIndex {
+		messages = append(messages, indexedMessage{index: index, message: message})
+	}
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].index < messages[j].index
+	})
+
+	result := make([]map[string]any, 0, len(messages))
+	for _, item := range messages {
+		result = append(result, item.message)
+	}
+	return result
 }
 
 func stringValue(v any) string {

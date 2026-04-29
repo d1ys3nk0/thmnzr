@@ -58,6 +58,71 @@ func TestHumanizeRendersTrace(t *testing.T) {
 	}
 }
 
+func TestHumanizeNoDedupRendersRepeatedLLMMessages(t *testing.T) {
+	root := trace.Span{
+		"name":    "root",
+		"context": map[string]any{"span_id": "rootspan00000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+	}
+	first := trace.Span{
+		"name":       "openrouter.chat",
+		"span_kind":  "LLM",
+		"parent_id":  "rootspan00000001",
+		"context":    map[string]any{"span_id": "llmspan000000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+		"attributes": map[string]any{"llm.input_messages.0.message.role": "user", "llm.input_messages.0.message.content": "same prompt"},
+	}
+	second := trace.Span{
+		"name":       "openrouter.chat",
+		"span_kind":  "LLM",
+		"parent_id":  "rootspan00000001",
+		"context":    map[string]any{"span_id": "llmspan000000002", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+		"attributes": map[string]any{"llm.input_messages.0.message.role": "user", "llm.input_messages.0.message.content": "same prompt"},
+	}
+
+	md, _, err := humanize(fakeClient{spans: []trace.Span{root, first, second}}, options{
+		traceURL:   "6eee3b57c1bf0ea5db5eae9d56362bdc",
+		projectID:  "project",
+		server:     defaultServer,
+		showInputs: true,
+		noDedup:    true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(md, "→ user: same prompt"); count != 2 {
+		t.Fatalf("message count = %d:\n%s", count, md)
+	}
+}
+
+func TestHumanizeDedupUsesSpanIDAcrossTreeOrder(t *testing.T) {
+	root := trace.Span{
+		"name":    "root",
+		"context": map[string]any{"span_id": "rootspan00000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+	}
+	child := trace.Span{
+		"name":      "openrouter.chat",
+		"span_kind": "LLM",
+		"parent_id": "rootspan00000001",
+		"context":   map[string]any{"span_id": "llmspan000000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+		"attributes": map[string]any{
+			"llm.input_messages.0.message.role":    "system",
+			"llm.input_messages.0.message.content": "instructions",
+		},
+	}
+
+	md, _, err := humanize(fakeClient{spans: []trace.Span{child, root}}, options{
+		traceURL:   "6eee3b57c1bf0ea5db5eae9d56362bdc",
+		projectID:  "project",
+		server:     defaultServer,
+		showInputs: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(md, "→ system: instructions") {
+		t.Fatalf("markdown missing message:\n%s", md)
+	}
+}
+
 func TestRunHelp(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

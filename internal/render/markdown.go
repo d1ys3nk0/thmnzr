@@ -17,18 +17,14 @@ type Options struct {
 	ShowAttrs      bool
 	ShowOutputs    bool
 	ShowInputs     bool
-	SpanIDFilter   string
 	Truncate       bool
-	NewMessagesMap map[int][]map[string]any
+	NewMessagesMap map[string][]map[string]any
 }
 
 func Markdown(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string {
 	children := tree.Children
-	spanIndex := map[string]int{}
 	spans := make([]trace.Span, 0, len(flatSpans))
-	for i, flat := range flatSpans {
-		id := trace.GetID(flat.Span)
-		spanIndex[id] = i
+	for _, flat := range flatSpans {
 		spans = append(spans, flat.Span)
 	}
 
@@ -44,12 +40,7 @@ func Markdown(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string 
 		title = "Agent Trace"
 	}
 
-	lines := []string{fmt.Sprintf("# %s\n", title)}
-	if opts.SpanIDFilter != "" {
-		lines = append(lines, fmt.Sprintf("*Focused on span: `%s`*\n", opts.SpanIDFilter))
-	}
-
-	lines = append(lines, "Summary:")
+	lines := []string{fmt.Sprintf("# %s\n", title), "Summary:"}
 	lines = append(lines, fmt.Sprintf("  Total time: %s", formatTimeMS(totalMS)))
 	if totalTokens > 0 {
 		lines = append(lines, fmt.Sprintf("  Total tokens: %d", totalTokens))
@@ -63,15 +54,14 @@ func Markdown(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string 
 	lines = append(lines, "", "```")
 
 	for i, span := range rootSpans {
-		id := trace.GetID(span)
-		lines = append(lines, renderNode(span, children, 0, i == len(rootSpans)-1, "", spanIndex[id], opts, map[string]bool{})...)
+		lines = append(lines, renderNode(span, children, 0, i == len(rootSpans)-1, "", opts, map[string]bool{})...)
 	}
 	lines = append(lines, "```")
 
 	return strings.Join(lines, "\n")
 }
 
-func renderNode(span trace.Span, children map[string][]trace.Span, depth int, isLast bool, prefix string, spanIndex int, opts Options, visited map[string]bool) []string {
+func renderNode(span trace.Span, children map[string][]trace.Span, depth int, isLast bool, prefix string, opts Options, visited map[string]bool) []string {
 	name := trace.GetName(span)
 	if name == "" {
 		name = "unnamed"
@@ -84,15 +74,11 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 		status = ""
 	}
 
-	tokenString := ""
-	if totalTokens > 0 {
-		tokenString = fmt.Sprintf("%d", totalTokens)
-	}
 	statusString := ""
 	if status != "" {
 		statusString = " " + status
 	}
-	metrics := fmt.Sprintf("[%s | %s]%s", formatTimeMS(totalTime), tokenString, statusString)
+	metrics := formatMetrics(totalTime, totalTokens) + statusString
 
 	treeChar := "├── "
 	if depth == 0 {
@@ -137,7 +123,7 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 	}
 
 	if opts.NewMessagesMap != nil {
-		for _, msg := range opts.NewMessagesMap[spanIndex] {
+		for _, msg := range opts.NewMessagesMap[spanID] {
 			role := stringValue(msg["role"])
 			if role == "" {
 				role = "unknown"
@@ -158,7 +144,7 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 	}
 	childSpans := children[spanID]
 	for i, child := range childSpans {
-		lines = append(lines, renderNode(child, children, depth+1, i == len(childSpans)-1, childCont, -1, opts, visited)...)
+		lines = append(lines, renderNode(child, children, depth+1, i == len(childSpans)-1, childCont, opts, visited)...)
 	}
 
 	return lines
@@ -215,6 +201,14 @@ func computeSubtreeStats(span trace.Span, children map[string][]trace.Span, visi
 func totalTokensInTree(children map[string][]trace.Span, span trace.Span, visited map[string]bool) int {
 	_, tokens := computeSubtreeStats(span, children, visited)
 	return tokens
+}
+
+func formatMetrics(totalTime float64, totalTokens int) string {
+	parts := []string{formatTimeMS(totalTime)}
+	if totalTokens > 0 {
+		parts = append(parts, fmt.Sprintf("%d", totalTokens))
+	}
+	return "[" + strings.Join(parts, " | ") + "]"
 }
 
 func traceTimes(spans []trace.Span) (time.Time, time.Time, float64) {

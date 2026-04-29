@@ -105,9 +105,24 @@ func humanize(client spanClient, opts options) (string, string, error) {
 
 	tree := trace.BuildTree(spans)
 	llmSpans := trace.FindLLMSpansChronological(spans)
-	newMessagesMap := map[int][]map[string]any{}
-	if !opts.noDedup && len(llmSpans) > 0 {
-		newMessagesMap = trace.DeduplicateMessages(llmSpans)
+	newMessagesMap := map[string][]map[string]any{}
+	if opts.noDedup {
+		for _, indexed := range llmSpans {
+			spanID := trace.GetID(indexed.Span)
+			if spanID == "" {
+				continue
+			}
+			newMessagesMap[spanID] = trace.GetLLMMessages(indexed.Span)
+		}
+	} else if len(llmSpans) > 0 {
+		dedupedMessages := trace.DeduplicateMessages(llmSpans)
+		for _, indexed := range llmSpans {
+			spanID := trace.GetID(indexed.Span)
+			if spanID == "" {
+				continue
+			}
+			newMessagesMap[spanID] = dedupedMessages[indexed.Index]
+		}
 	}
 	flat := trace.FlattenTree(tree.Children, trace.RootID)
 
@@ -128,7 +143,6 @@ func humanize(client spanClient, opts options) (string, string, error) {
 		ShowAttrs:      opts.showAttrs || opts.showOutputs,
 		ShowOutputs:    opts.showOutputs,
 		ShowInputs:     opts.showInputs,
-		SpanIDFilter:   spanID,
 		Truncate:       opts.truncate,
 		NewMessagesMap: newMessagesMap,
 	})
