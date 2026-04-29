@@ -44,8 +44,53 @@ func TestParseArgsFormatPlain(t *testing.T) {
 	}
 }
 
+func TestParseArgsDefaultFormatPlain(t *testing.T) {
+	got, err := parseArgs([]string{"--project-id", "project", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.format != "plain" {
+		t.Fatalf("format = %q", got.format)
+	}
+}
+
+func TestParseArgsFormats(t *testing.T) {
+	for _, value := range []string{"plain", "markdown", "json"} {
+		got, err := parseArgs([]string{"--project-id", "project", "--format", value, "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+		if err != nil {
+			t.Fatalf("format %q: %v", value, err)
+		}
+		if string(got.format) != value {
+			t.Fatalf("format %q parsed as %q", value, got.format)
+		}
+	}
+}
+
+func TestParseArgsInputsAndOutputsAliases(t *testing.T) {
+	got, err := parseArgs([]string{"--project-id", "project", "-i", "--outputs", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.showInputs {
+		t.Fatal("expected -i to enable inputs")
+	}
+	if !got.showOutputs {
+		t.Fatal("expected --outputs to enable outputs")
+	}
+}
+
+func TestParseArgsHidesInputsByDefault(t *testing.T) {
+	got, err := parseArgs([]string{"--project-id", "project", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.showInputs {
+		t.Fatal("expected inputs to be hidden by default")
+	}
+}
+
 func TestParseArgsRejectsUnknownFormat(t *testing.T) {
-	_, err := parseArgs([]string{"--project-id", "project", "--format", "json", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	_, err := parseArgs([]string{"--project-id", "project", "--format", "xml", "6eee3b57c1bf0ea5db5eae9d56362bdc"})
 	if err == nil || !strings.Contains(err.Error(), "unsupported format") {
 		t.Fatalf("err = %v", err)
 	}
@@ -72,6 +117,32 @@ func TestHumanizeRendersTrace(t *testing.T) {
 	}
 	if !strings.Contains(md, "# Trace 6eee3b57c1bf0ea5db5eae9d56362bdc") {
 		t.Fatalf("markdown = %s", md)
+	}
+}
+
+func TestHumanizeOmitsInputsByDefault(t *testing.T) {
+	root := trace.Span{
+		"name":    "root",
+		"context": map[string]any{"span_id": "rootspan00000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+	}
+	child := trace.Span{
+		"name":       "openrouter.chat",
+		"span_kind":  "LLM",
+		"parent_id":  "rootspan00000001",
+		"context":    map[string]any{"span_id": "llmspan000000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+		"attributes": map[string]any{"llm.input_messages.0.message.role": "user", "llm.input_messages.0.message.content": "hidden prompt"},
+	}
+
+	md, _, err := humanize(fakeClient{spans: []trace.Span{root, child}}, options{
+		traceURL:  "6eee3b57c1bf0ea5db5eae9d56362bdc",
+		projectID: "project",
+		server:    defaultServer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(md, "hidden prompt") {
+		t.Fatalf("markdown should omit inputs by default:\n%s", md)
 	}
 }
 
@@ -105,7 +176,7 @@ func TestHumanizeNoDedupRendersRepeatedLLMMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count := strings.Count(md, "-> user: same prompt"); count != 2 {
+	if count := strings.Count(md, "> user"); count != 2 {
 		t.Fatalf("message count = %d:\n%s", count, md)
 	}
 }
@@ -135,7 +206,7 @@ func TestHumanizeDedupUsesSpanIDAcrossTreeOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(md, "-> system: instructions") {
+	if !strings.Contains(md, "> system") || !strings.Contains(md, "instructions") {
 		t.Fatalf("markdown missing message:\n%s", md)
 	}
 }

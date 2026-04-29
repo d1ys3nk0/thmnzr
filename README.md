@@ -1,6 +1,6 @@
 # Trace Humanizer
 
-`thmnzr` converts Phoenix trace data into compact, human-readable Markdown.
+`thmnzr` converts Phoenix trace data into compact plain text, Markdown, or JSON.
 
 It is intended for developers and AI agents that need to inspect LLM, tool, and
 agent traces without clicking through the Phoenix UI.
@@ -9,10 +9,9 @@ agent traces without clicking through the Phoenix UI.
 
 - Accepts a Phoenix trace URL, span URL, or raw trace ID.
 - Fetches spans from the Phoenix HTTP API.
-- Renders an ASCII Markdown trace summary and span tree by default.
-- Supports a dense plain format for AI agent consumption.
-- Shows LLM/tool inputs by default.
-- Optionally shows outputs and model attributes.
+- Renders dense plain output for AI agent consumption by default.
+- Supports human-readable Markdown with an ASCII tree and valid JSON for `jq`.
+- Optionally shows LLM/tool inputs, outputs, and model attributes.
 - Deduplicates repeated LLM messages across chronological LLM spans.
 - Runs as a local Go binary or through `docker run`.
 
@@ -73,6 +72,18 @@ Use dense plain output for AI agents:
 thmnzr --project-id default --format plain 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
+Use human-readable Markdown with an ASCII tree:
+
+```bash
+thmnzr --project-id default --format markdown 6eee3b57c1bf0ea5db5eae9d56362bdc
+```
+
+Use JSON for filtering with `jq`:
+
+```bash
+thmnzr --project-id default --format json 6eee3b57c1bf0ea5db5eae9d56362bdc | jq '.spans[].name'
+```
+
 Generate the output filename from the trace ID:
 
 ```bash
@@ -90,13 +101,13 @@ Options:
       --server URL           Phoenix server URL.
       --api-key KEY          Phoenix API key.
       --project-id ID        Project ID if it is not present in the input URL.
-  -o, --show-outputs         Show tool/LLM outputs.
-  -f, --format FORMAT        Output format: ascii or plain. Defaults to ascii.
-      --show-inputs          Show inputs. Enabled by default.
+  -i, --inputs               Show tool/LLM inputs.
+  -o, --outputs              Show tool/LLM outputs.
+  -f, --format FORMAT        Output format: plain, markdown, or json. Defaults to plain.
       --show-attrs           Show input/model attributes for spans.
       --truncate             Truncate long messages.
       --no-dedup             Disable LLM message deduplication.
-  -s, --save [FILE]          Save output to FILE. Without FILE, writes TRACE_ID.md.
+  -s, --save [FILE]          Save output to FILE. Without FILE, writes TRACE_ID with a format extension.
 ```
 
 ## Docker Usage
@@ -138,17 +149,18 @@ Because the image does not override the entrypoint, CI job scripts can call
 
 ## Output
 
-`thmnzr` prints ASCII Markdown to stdout by default:
+`thmnzr` prints dense plain text to stdout by default:
 
 - trace title
 - total time
 - total tokens when available
 - start and finish timestamps when available
-- span tree with timing, token, status, kind, and short span IDs
-- selected span inputs, outputs, model names, and deduplicated LLM messages
+- span hierarchy with timing, token, status, kind, and short span IDs
+- selected span inputs, outputs, model names, and deduplicated LLM messages when enabled
 
-Use `-f plain` or `--format plain` for a denser key/value output optimized for
-AI agents and other text parsers.
+Use `-f markdown` or `--format markdown` for human-readable Markdown with an
+ASCII tree. Use `-f json` or `--format json` for valid JSON that can be filtered
+with tools such as `jq`.
 
 Errors are printed to stderr and return a non-zero exit code.
 

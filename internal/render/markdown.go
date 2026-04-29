@@ -13,12 +13,21 @@ import (
 
 const truncateLen = 200
 const defaultWrapWidth = 100
+const (
+	treeBranch      = "+-- "
+	treeLastBranch  = "\\-- "
+	treeChildSpace  = "    "
+	treeChildBranch = "|   "
+	treeDetail      = "|   "
+)
 
 type Format string
 
 const (
-	FormatASCII Format = "ascii"
-	FormatPlain Format = "plain"
+	FormatASCII    Format = "ascii"
+	FormatMarkdown Format = "markdown"
+	FormatPlain    Format = "plain"
+	FormatJSON     Format = "json"
 )
 
 type Options struct {
@@ -33,7 +42,10 @@ type Options struct {
 }
 
 func Markdown(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string {
-	if opts.Format == FormatPlain {
+	switch opts.Format {
+	case FormatJSON:
+		return renderJSON(tree, flatSpans, opts)
+	case FormatPlain:
 		return renderPlain(tree, flatSpans, opts)
 	}
 
@@ -76,12 +88,162 @@ func Markdown(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string 
 	return strings.Join(lines, "\n")
 }
 
+type jsonTrace struct {
+	Title       string     `json:"title"`
+	TotalTime   string     `json:"total_time"`
+	TotalMS     float64    `json:"total_ms"`
+	TotalTokens int        `json:"total_tokens,omitempty"`
+	Started     string     `json:"started,omitempty"`
+	Finished    string     `json:"finished,omitempty"`
+	Spans       []jsonSpan `json:"spans"`
+}
+
+type jsonSpan struct {
+	Name       string        `json:"name"`
+	Duration   string        `json:"duration"`
+	DurationMS float64       `json:"duration_ms"`
+	Tokens     int           `json:"tokens,omitempty"`
+	Kind       string        `json:"kind,omitempty"`
+	Status     string        `json:"status,omitempty"`
+	SpanID     string        `json:"span_id,omitempty"`
+	Input      string        `json:"input,omitempty"`
+	Output     string        `json:"output,omitempty"`
+	Model      string        `json:"model,omitempty"`
+	Messages   []jsonMessage `json:"messages,omitempty"`
+	Children   []jsonSpan    `json:"children,omitempty"`
+}
+
+type jsonMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+func renderJSON(tree trace.Tree, flatSpans []trace.FlatSpan, opts Options) string {
+	children := tree.Children
+	spans := make([]trace.Span, 0, len(flatSpans))
+	for _, flat := range flatSpans {
+		spans = append(spans, flat.Span)
+	}
+
+	startTime, endTime, totalMS := traceTimes(spans)
+	rootSpans := children[trace.RootID]
+	totalTokens := 0
+	for _, span := range rootSpans {
+		totalTokens += totalTokensInTree(children, span, map[string]bool{})
+	}
+
+	title := opts.Title
+	if title == "" {
+		title = "Agent Trace"
+	}
+
+	doc := jsonTrace{
+		Title:     title,
+		TotalTime: formatTimeMS(totalMS),
+		TotalMS:   totalMS,
+		Spans:     make([]jsonSpan, 0, len(rootSpans)),
+	}
+	if totalTokens > 0 {
+		doc.TotalTokens = totalTokens
+	}
+	if !startTime.IsZero() {
+		doc.Started = startTime.Format(time.RFC3339Nano)
+	}
+	if !endTime.IsZero() {
+		doc.Finished = endTime.Format(time.RFC3339Nano)
+	}
+	for _, span := range rootSpans {
+		doc.Spans = append(doc.Spans, renderJSONNode(span, children, opts, map[string]bool{}))
+	}
+
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func renderJSONNode(span trace.Span, children map[string][]trace.Span, opts Options, visited map[string]bool) jsonSpan {
+	name := trace.GetName(span)
+	if name == "" {
+		name = "unnamed"
+	}
+	kind := displayKind(trace.GetSpanKind(span))
+	spanID := trace.GetID(span)
+	totalTime, totalTokens := computeSubtreeStats(span, children, map[string]bool{})
+	status := trace.GetStatusCode(span)
+
+	node := jsonSpan{
+		Name:       name,
+		Duration:   formatTimeMS(totalTime),
+		DurationMS: totalTime,
+	}
+	if totalTokens > 0 {
+		node.Tokens = totalTokens
+	}
+	if kind != "" {
+		node.Kind = kind
+	}
+	if status != "" && status != "UNSET" && status != "OK" {
+		node.Status = status
+	}
+	if spanID != "" {
+		node.SpanID = spanID
+	}
+	if opts.ShowAttrs {
+		attrs := trace.GetAttributes(span)
+		if opts.ShowInputs {
+			if input := trace.GetInput(span); input != nil {
+				value := valueString(input)
+				if opts.Truncate {
+					value = truncate(value, truncateLen)
+				}
+				node.Input = value
+			}
+		}
+		if opts.ShowOutputs {
+			if output := trace.GetOutput(span); output != nil {
+				value := outputString(output)
+				if opts.Truncate {
+					value = truncate(value, truncateLen)
+				}
+				node.Output = value
+			}
+		}
+		node.Model = firstString(stringValue(attrs["llm.model_name"]), stringValue(attrs["model_name"]))
+	}
+	if opts.NewMessagesMap != nil {
+		for _, msg := range opts.NewMessagesMap[spanID] {
+			role := stringValue(msg["role"])
+			if role == "" {
+				role = "unknown"
+			}
+			content := contentString(msg["content"])
+			if opts.Truncate {
+				content = truncate(content, 150)
+			}
+			node.Messages = append(node.Messages, jsonMessage{Role: role, Content: content})
+		}
+	}
+
+	if spanID != "" {
+		if visited[spanID] {
+			return node
+		}
+		visited[spanID] = true
+	}
+	for _, child := range children[spanID] {
+		node.Children = append(node.Children, renderJSONNode(child, children, opts, visited))
+	}
+	return node
+}
+
 func renderNode(span trace.Span, children map[string][]trace.Span, depth int, isLast bool, prefix string, opts Options, visited map[string]bool) []string {
 	name := trace.GetName(span)
 	if name == "" {
 		name = "unnamed"
 	}
-	kind := trace.GetSpanKind(span)
+	kind := displayKind(trace.GetSpanKind(span))
 	spanID := trace.GetID(span)
 	totalTime, totalTokens := computeSubtreeStats(span, children, map[string]bool{})
 	status := trace.GetStatusCode(span)
@@ -95,14 +257,12 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 	}
 	metrics := formatMetrics(totalTime, totalTokens) + statusString
 
-	treeChar := "+-- "
-	if depth == 0 {
-		treeChar = "+-- "
-	} else if isLast {
-		treeChar = "`-- "
+	treeChar := treeBranch
+	if isLast {
+		treeChar = treeLastBranch
 	}
 	nodePrefix := ""
-	if depth >= 2 {
+	if depth > 0 {
 		nodePrefix = prefix
 	}
 
@@ -118,22 +278,22 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 	childCont := ""
 	if depth == 0 {
 		if isLast {
-			childCont = "   "
+			childCont = treeChildSpace
 		} else {
-			childCont = "|  "
+			childCont = treeChildBranch
 		}
 	} else {
 		childCont = prefix
 		if isLast {
-			childCont += "   "
+			childCont += treeChildSpace
 		} else {
-			childCont += "|  "
+			childCont += treeChildBranch
 		}
 	}
 
 	if opts.ShowAttrs {
 		for _, attrLine := range formatAttrs(span, opts.ShowOutputs, opts.ShowInputs, opts.Truncate) {
-			lines = appendWrappedTreeText(lines, fmt.Sprintf("%s|  ", childCont), "", "  ", attrLine, opts.WrapWidth)
+			lines = appendWrappedTreeText(lines, childCont+treeDetail, "", "  ", attrLine, opts.WrapWidth)
 		}
 	}
 
@@ -147,8 +307,9 @@ func renderNode(span trace.Span, children map[string][]trace.Span, depth int, is
 			if opts.Truncate {
 				content = truncate(content, 150)
 			}
-			label := fmt.Sprintf("-> %s: ", role)
-			lines = appendWrappedTreeText(lines, fmt.Sprintf("%s|  ", childCont), label, strings.Repeat(" ", utf8.RuneCountInString(label)), content, opts.WrapWidth)
+			prefix := childCont + treeDetail
+			lines = append(lines, prefix+"> "+role)
+			lines = appendWrappedTreeText(lines, prefix, "", "", content, opts.WrapWidth)
 		}
 	}
 
@@ -210,7 +371,7 @@ func renderPlainNode(span trace.Span, children map[string][]trace.Span, depth in
 	if name == "" {
 		name = "unnamed"
 	}
-	kind := trace.GetSpanKind(span)
+	kind := displayKind(trace.GetSpanKind(span))
 	spanID := trace.GetID(span)
 	totalTime, totalTokens := computeSubtreeStats(span, children, map[string]bool{})
 	status := trace.GetStatusCode(span)
@@ -273,6 +434,10 @@ func appendWrappedTreeText(lines []string, prefix, label, continuationIndent, co
 	text = strings.ReplaceAll(text, "\r", "\n")
 	paragraphs := strings.Split(text, "\n")
 	for i, paragraph := range paragraphs {
+		if i > 0 && hasLeadingWhitespace(paragraph) {
+			lines = append(lines, prefix+continuationIndent+paragraph)
+			continue
+		}
 		if i == 0 {
 			lines = appendWrappedLine(lines, prefix+label, prefix+continuationIndent, paragraph, width)
 			continue
@@ -354,6 +519,10 @@ func normalizedWrapWidth(width int) int {
 	return width
 }
 
+func hasLeadingWhitespace(value string) bool {
+	return strings.HasPrefix(value, " ") || strings.HasPrefix(value, "\t")
+}
+
 func formatAttrs(span trace.Span, showOutputs, showInputs, shouldTruncate bool) []string {
 	attrs := trace.GetAttributes(span)
 	lines := []string{}
@@ -368,7 +537,7 @@ func formatAttrs(span trace.Span, showOutputs, showInputs, shouldTruncate bool) 
 	}
 	if showOutputs {
 		if output := trace.GetOutput(span); output != nil {
-			value := valueString(output)
+			value := outputString(output)
 			if shouldTruncate {
 				value = truncate(value, truncateLen)
 			}
@@ -415,6 +584,13 @@ func formatMetrics(totalTime float64, totalTokens int) string {
 	return "[" + strings.Join(parts, " | ") + "]"
 }
 
+func displayKind(kind string) string {
+	if strings.EqualFold(kind, "UNKNOWN") {
+		return ""
+	}
+	return kind
+}
+
 func traceTimes(spans []trace.Span) (time.Time, time.Time, float64) {
 	starts := []time.Time{}
 	ends := []time.Time{}
@@ -456,6 +632,51 @@ func valueString(value any) string {
 	return fmt.Sprint(value)
 }
 
+func outputString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		stripped := stripMarkdownJSONFence(typed)
+		if pretty, ok := prettyJSON(stripped); ok {
+			return pretty
+		}
+		return stripped
+	case []any, map[string]any:
+		if data, err := json.MarshalIndent(typed, "", "  "); err == nil {
+			return string(data)
+		}
+	}
+	return valueString(value)
+}
+
+func stripMarkdownJSONFence(value string) string {
+	trimmed := strings.TrimSpace(value)
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) == 0 {
+		return value
+	}
+	first := strings.TrimSpace(lines[0])
+	if first != "```" && !strings.EqualFold(first, "```json") {
+		return value
+	}
+	lines = lines[1:]
+	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "```" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func prettyJSON(value string) (string, bool) {
+	var decoded any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(value)), &decoded); err != nil {
+		return "", false
+	}
+	data, err := json.MarshalIndent(decoded, "", "  ")
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
+}
+
 func contentString(value any) string {
 	if parts, ok := value.([]any); ok {
 		result := []string{}
@@ -470,10 +691,11 @@ func contentString(value any) string {
 }
 
 func truncate(value string, limit int) string {
-	if len(value) <= limit {
+	if utf8.RuneCountInString(value) <= limit {
 		return value
 	}
-	return value[:limit] + "..."
+	head, tail := splitRunes(value, limit)
+	return fmt.Sprintf("%s [TRUNCATED %d chars]", head, utf8.RuneCountInString(tail))
 }
 
 func prefixString(value string, length int) string {

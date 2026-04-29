@@ -69,7 +69,10 @@ func GetInput(span Span) any {
 
 func GetOutput(span Span) any {
 	attrs := GetAttributes(span)
-	return firstAny(attrs["output"], attrs["llm.output"], attrs["output.value"])
+	if output := firstAny(attrs["output"], attrs["llm.output"], attrs["output.value"]); output != nil {
+		return output
+	}
+	return outputMessagesContent(flatAttributeMessages(attrs, "llm.output_messages."))
 }
 
 func GetDurationMS(span Span) (float64, bool) {
@@ -162,6 +165,18 @@ func flatAttributeMessages(attrs map[string]any, prefix string) []map[string]any
 		result = append(result, item.message)
 	}
 	return result
+}
+
+func outputMessagesContent(messages []map[string]any) any {
+	if len(messages) == 0 {
+		return nil
+	}
+	if len(messages) == 1 {
+		if content := messages[0]["content"]; content != nil {
+			return content
+		}
+	}
+	return messages
 }
 
 func stringValue(v any) string {

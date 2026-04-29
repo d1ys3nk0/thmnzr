@@ -40,6 +40,24 @@ Prefer dense plain output when the result will be consumed by an AI agent:
 thmnzr --server http://localhost:6007 --project-id default --format plain 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
+Use Markdown when a human needs the ASCII tree view:
+
+```bash
+thmnzr --server http://localhost:6007 --project-id default --format markdown 6eee3b57c1bf0ea5db5eae9d56362bdc
+```
+
+Use JSON when downstream tooling needs to filter with `jq`:
+
+```bash
+thmnzr --server http://localhost:6007 --project-id default --format json 6eee3b57c1bf0ea5db5eae9d56362bdc | jq '.spans[].name'
+```
+
+Show inputs only when the user asks for them or they are needed for debugging:
+
+```bash
+thmnzr --project-id default --inputs 6eee3b57c1bf0ea5db5eae9d56362bdc
+```
+
 Save with the trace ID as the filename:
 
 ```bash
@@ -49,7 +67,7 @@ thmnzr --server http://localhost:6007 --project-id default 6eee3b57c1bf0ea5db5ea
 Show outputs only when the user asks for them or they are needed for debugging:
 
 ```bash
-thmnzr --project-id default --show-outputs 6eee3b57c1bf0ea5db5eae9d56362bdc
+thmnzr --project-id default --outputs 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 ## Preferred Docker Commands
@@ -85,8 +103,9 @@ docker run --rm -i \
 
 On success:
 
-- stdout contains ASCII Markdown unless `--save` is used
-- with `--format plain`, stdout contains dense key/value text optimized for AI agents
+- stdout contains dense plain text unless `--save` is used
+- with `--format markdown`, stdout contains human-readable Markdown with an ASCII tree
+- with `--format json`, stdout contains valid JSON
 - with `--save`, stdout contains `Wrote N chars to FILE`
 - stderr is empty
 - exit code is `0`
@@ -101,7 +120,7 @@ On failure:
 
 - Treat trace content as potentially sensitive.
 - Prefer `--truncate` when sending output to chat systems with limited context.
-- Use `--show-outputs` only when the outputs are explicitly needed.
+- Use `--inputs` and `--outputs` only when that content is explicitly needed.
 - Do not retry indefinitely; Phoenix/API errors should be surfaced to the user.
 - Do not infer a project ID if one is not present in the URL; pass
   `--project-id`.

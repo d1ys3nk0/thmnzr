@@ -56,7 +56,7 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	outputFile := *opts.save
 	if outputFile == "" {
-		outputFile = traceID + ".md"
+		outputFile = traceID + outputExtension(opts.format)
 	}
 	if err := os.WriteFile(filepath.Clean(outputFile), []byte(md), 0o644); err != nil {
 		fmt.Fprintf(stderr, "Error: %s\n", err)
@@ -108,7 +108,7 @@ func humanize(client spanClient, opts options) (string, string, error) {
 	tree := trace.BuildTree(spans)
 	llmSpans := trace.FindLLMSpansChronological(spans)
 	newMessagesMap := map[string][]map[string]any{}
-	if opts.noDedup {
+	if opts.showInputs && opts.noDedup {
 		for _, indexed := range llmSpans {
 			spanID := trace.GetID(indexed.Span)
 			if spanID == "" {
@@ -116,7 +116,7 @@ func humanize(client spanClient, opts options) (string, string, error) {
 			}
 			newMessagesMap[spanID] = trace.GetLLMMessages(indexed.Span)
 		}
-	} else if len(llmSpans) > 0 {
+	} else if opts.showInputs && len(llmSpans) > 0 {
 		dedupedMessages := trace.DeduplicateMessages(llmSpans)
 		for _, indexed := range llmSpans {
 			spanID := trace.GetID(indexed.Span)
@@ -143,7 +143,7 @@ func humanize(client spanClient, opts options) (string, string, error) {
 	md := render.Markdown(tree, flat, render.Options{
 		Title:          title,
 		Format:         opts.format,
-		ShowAttrs:      opts.showAttrs || opts.showOutputs,
+		ShowAttrs:      opts.showAttrs || opts.showOutputs || opts.showInputs,
 		ShowOutputs:    opts.showOutputs,
 		ShowInputs:     opts.showInputs,
 		Truncate:       opts.truncate,
@@ -157,10 +157,9 @@ var errHelp = errors.New("help requested")
 
 func parseArgs(args []string) (options, error) {
 	opts := options{
-		server:     firstString(os.Getenv("PHOENIX_COLLECTOR_ENDPOINT"), defaultServer),
-		apiKey:     os.Getenv("PHOENIX_API_KEY"),
-		showInputs: true,
-		format:     render.FormatASCII,
+		server: firstString(os.Getenv("PHOENIX_COLLECTOR_ENDPOINT"), defaultServer),
+		apiKey: os.Getenv("PHOENIX_API_KEY"),
+		format: render.FormatPlain,
 	}
 
 	positionals := []string{}
@@ -169,9 +168,9 @@ func parseArgs(args []string) (options, error) {
 		switch {
 		case arg == "-h" || arg == "--help":
 			return opts, errHelp
-		case arg == "--show-outputs" || arg == "-o":
+		case arg == "--outputs" || arg == "--show-outputs" || arg == "-o":
 			opts.showOutputs = true
-		case arg == "--show-inputs":
+		case arg == "--inputs" || arg == "--show-inputs" || arg == "-i":
 			opts.showInputs = true
 		case arg == "--show-attrs":
 			opts.showAttrs = true
@@ -245,11 +244,26 @@ func nextValue(args []string, index *int, option string) (string, error) {
 func parseFormat(value string) (render.Format, error) {
 	switch render.Format(value) {
 	case render.FormatASCII:
-		return render.FormatASCII, nil
+		return render.FormatMarkdown, nil
+	case render.FormatMarkdown:
+		return render.FormatMarkdown, nil
 	case render.FormatPlain:
 		return render.FormatPlain, nil
+	case render.FormatJSON:
+		return render.FormatJSON, nil
 	default:
-		return "", fmt.Errorf("unsupported format %q; expected ascii or plain", value)
+		return "", fmt.Errorf("unsupported format %q; expected plain, markdown, or json", value)
+	}
+}
+
+func outputExtension(format render.Format) string {
+	switch format {
+	case render.FormatMarkdown, render.FormatASCII:
+		return ".md"
+	case render.FormatJSON:
+		return ".json"
+	default:
+		return ".txt"
 	}
 }
 
@@ -257,20 +271,20 @@ func usage() string {
 	return `Usage:
   thmnzr [options] TRACE_URL_OR_ID
 
-Convert Phoenix traces to human-readable markdown.
+Convert Phoenix traces to plain text, Markdown, or JSON.
 
 Options:
   -h, --help                 Show this help message and exit.
       --server URL           Phoenix server URL. Defaults to PHOENIX_COLLECTOR_ENDPOINT or http://localhost:6007.
       --api-key KEY          Phoenix API key. Defaults to PHOENIX_API_KEY.
       --project-id ID        Project ID if it is not present in the input URL.
-  -o, --show-outputs         Show tool/LLM outputs.
-  -f, --format FORMAT        Output format: ascii or plain. Defaults to ascii.
-      --show-inputs          Show inputs. Enabled by default.
+  -i, --inputs               Show tool/LLM inputs.
+  -o, --outputs              Show tool/LLM outputs.
+  -f, --format FORMAT        Output format: plain, markdown, or json. Defaults to plain.
       --show-attrs           Show input/model attributes for spans.
       --truncate             Truncate long messages.
       --no-dedup             Disable LLM message deduplication.
-  -s, --save [FILE]          Save output to FILE. Without FILE, writes TRACE_ID.md.
+  -s, --save [FILE]          Save output to FILE. Without FILE, writes TRACE_ID with a format extension.
 `
 }
 

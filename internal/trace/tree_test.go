@@ -70,3 +70,18 @@ func TestGetLLMMessagesFromOpenInferenceAttributes(t *testing.T) {
 		t.Fatalf("second message = %#v", got[1])
 	}
 }
+
+func TestGetOutputFromOpenInferenceOutputMessages(t *testing.T) {
+	span := Span{
+		"name": "openrouter.chat",
+		"attributes": map[string]any{
+			"llm.output_messages.0.message.role":    "assistant",
+			"llm.output_messages.0.message.content": `{"nodes":[],"edges":[]}`,
+		},
+	}
+
+	got := GetOutput(span)
+	if got != `{"nodes":[],"edges":[]}` {
+		t.Fatalf("output = %#v", got)
+	}
+}
