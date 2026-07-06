@@ -5,6 +5,8 @@
 It is intended for developers and AI agents that need to inspect LLM, tool, and
 agent traces without clicking through the Phoenix UI.
 
+Agents should follow documentation `docs/AGENT_USAGE.md`.
+
 ## Features
 
 - Accepts a Phoenix trace URL, span URL, or raw trace ID.
