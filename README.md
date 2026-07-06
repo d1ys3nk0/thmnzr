@@ -33,7 +33,7 @@ If no server is configured, `thmnzr` uses `http://localhost:6007`.
 Build the binary:
 
 ```bash
-make build
+task build
 ```
 
 Run from the workspace:
@@ -200,10 +200,10 @@ Docker cannot reach local Phoenix
 Useful commands:
 
 ```bash
-make fmt
-make check
-make build
-make docker-build
+task fmt
+task check
+task build
+task docker-build
 ```
 
 Repository: <http://github.com/d1ys3nk0/thmnzr>
