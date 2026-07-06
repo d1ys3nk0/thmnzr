@@ -9,7 +9,7 @@ An agent needs:
 
 - a Phoenix trace URL, span URL, or raw 32-character trace ID
 - a Phoenix project ID when the input is not a full Phoenix URL
-- a Phoenix server URL when the default `http://localhost:6007` is not correct
+- a Phoenix server URL when the default `http://localhost:6006` is not correct
 - a Phoenix API key when the server requires authentication
 
 Never print API keys in logs, Markdown output, or task summaries.
@@ -19,37 +19,37 @@ Never print API keys in logs, Markdown output, or task summaries.
 Use a full trace URL when available:
 
 ```bash
-thmnzr 'http://localhost:6007/projects/default/traces/6eee3b57c1bf0ea5db5eae9d56362bdc'
+thmnzr 'http://localhost:6006/projects/default/traces/6eee3b57c1bf0ea5db5eae9d56362bdc'
 ```
 
 Use a raw trace ID only with an explicit project:
 
 ```bash
-thmnzr --server http://localhost:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
+thmnzr --server http://localhost:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 Save a Markdown artifact with a deterministic name:
 
 ```bash
-thmnzr --server http://localhost:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save trace.md
+thmnzr --server http://localhost:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save trace.md
 ```
 
 Prefer dense plain output when the result will be consumed by an AI agent:
 
 ```bash
-thmnzr --server http://localhost:6007 --project-id default --format plain 6eee3b57c1bf0ea5db5eae9d56362bdc
+thmnzr --server http://localhost:6006 --project-id default --format plain 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 Use Markdown when a human needs the ASCII tree view:
 
 ```bash
-thmnzr --server http://localhost:6007 --project-id default --format markdown 6eee3b57c1bf0ea5db5eae9d56362bdc
+thmnzr --server http://localhost:6006 --project-id default --format markdown 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 Use JSON when downstream tooling needs to filter with `jq`:
 
 ```bash
-thmnzr --server http://localhost:6007 --project-id default --format json 6eee3b57c1bf0ea5db5eae9d56362bdc | jq '.spans[].name'
+thmnzr --server http://localhost:6006 --project-id default --format json 6eee3b57c1bf0ea5db5eae9d56362bdc | jq '.spans[].name'
 ```
 
 Show inputs only when the user asks for them or they are needed for debugging:
@@ -61,7 +61,7 @@ thmnzr --project-id default --inputs 6eee3b57c1bf0ea5db5eae9d56362bdc
 Save with the trace ID as the filename:
 
 ```bash
-thmnzr --server http://localhost:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save
+thmnzr --server http://localhost:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save
 ```
 
 Show outputs only when the user asks for them or they are needed for debugging:
@@ -86,7 +86,7 @@ Phoenix on the host:
 ```bash
 docker run --rm -i \
   ghcr.io/d1ys3nk0/thmnzr:latest \
-  thmnzr --server http://host.docker.internal:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
+  thmnzr --server http://host.docker.internal:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 Write output to the current workspace:
@@ -96,7 +96,7 @@ docker run --rm -i \
   -v "$PWD:$PWD" \
   -w "$PWD" \
   ghcr.io/d1ys3nk0/thmnzr:latest \
-  thmnzr --server http://host.docker.internal:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save
+  thmnzr --server http://host.docker.internal:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save
 ```
 
 ## Output Contract

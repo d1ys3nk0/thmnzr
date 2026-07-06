@@ -15,7 +15,7 @@ import (
 	"github.com/d1ys3nk0/thmnzr/internal/trace"
 )
 
-const defaultServer = "http://localhost:6007"
+const defaultServer = "http://localhost:6006"
 
 type options struct {
 	traceURL    string
@@ -275,7 +275,7 @@ Convert Phoenix traces to plain text, Markdown, or JSON.
 
 Options:
   -h, --help                 Show this help message and exit.
-      --server URL           Phoenix server URL. Defaults to PHOENIX_COLLECTOR_ENDPOINT or http://localhost:6007.
+      --server URL           Phoenix server URL. Defaults to PHOENIX_COLLECTOR_ENDPOINT or http://localhost:6006.
       --api-key KEY          Phoenix API key. Defaults to PHOENIX_API_KEY.
       --project-id ID        Project ID if it is not present in the input URL.
   -i, --inputs               Show tool/LLM inputs.

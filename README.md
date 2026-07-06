@@ -26,7 +26,7 @@ Optional environment variables:
 - `PHOENIX_API_KEY`: used when `--api-key` is omitted.
 - `PHOENIX_COLLECTOR_ENDPOINT`: used as the server URL when `--server` is omitted.
 
-If no server is configured, `thmnzr` uses `http://localhost:6007`.
+If no server is configured, `thmnzr` uses `http://localhost:6006`.
 
 ## Local Usage
 
@@ -45,19 +45,19 @@ go run ./cmd/thmnzr --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
 Run an installed or built binary:
 
 ```bash
-./bin/thmnzr --server http://localhost:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
+./bin/thmnzr --server http://localhost:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 Use a full Phoenix URL:
 
 ```bash
-thmnzr 'http://localhost:6007/projects/default/traces/6eee3b57c1bf0ea5db5eae9d56362bdc'
+thmnzr 'http://localhost:6006/projects/default/traces/6eee3b57c1bf0ea5db5eae9d56362bdc'
 ```
 
 Focus through a span URL:
 
 ```bash
-thmnzr 'http://localhost:6007/projects/default/spans/0123456789abcdef'
+thmnzr 'http://localhost:6006/projects/default/spans/0123456789abcdef'
 ```
 
 Save output:
@@ -131,7 +131,7 @@ Use Docker against Phoenix running on the host machine:
 ```bash
 docker run --rm -i \
   ghcr.io/d1ys3nk0/thmnzr:latest \
-  thmnzr --server http://host.docker.internal:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
+  thmnzr --server http://host.docker.internal:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc
 ```
 
 Save output to the current directory:
@@ -141,7 +141,7 @@ docker run --rm -i \
   -v "$PWD:$PWD" \
   -w "$PWD" \
   ghcr.io/d1ys3nk0/thmnzr:latest \
-  thmnzr --server http://host.docker.internal:6007 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save
+  thmnzr --server http://host.docker.internal:6006 --project-id default 6eee3b57c1bf0ea5db5eae9d56362bdc --save
 ```
 
 Because the image does not override the entrypoint, CI job scripts can call
@@ -192,7 +192,7 @@ Exit codes:
 
 Docker cannot reach local Phoenix
 
-: Use `--server http://host.docker.internal:6007` on Docker Desktop. On Linux,
+: Use `--server http://host.docker.internal:6006` on Docker Desktop. On Linux,
   use the host gateway address supported by your Docker setup.
 
 ## Development
