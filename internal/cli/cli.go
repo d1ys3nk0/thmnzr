@@ -20,6 +20,7 @@ const defaultServer = "http://localhost:6006"
 type options struct {
 	traceURL    string
 	server      string
+	serverSet   bool
 	apiKey      string
 	projectID   string
 	showOutputs bool
@@ -186,6 +187,7 @@ func parseArgs(args []string) (options, error) {
 			switch arg {
 			case "--server":
 				opts.server = value
+				opts.serverSet = true
 			case "--api-key":
 				opts.apiKey = value
 			case "--project-id":
@@ -199,6 +201,7 @@ func parseArgs(args []string) (options, error) {
 			}
 		case strings.HasPrefix(arg, "--server="):
 			opts.server = strings.TrimPrefix(arg, "--server=")
+			opts.serverSet = true
 		case strings.HasPrefix(arg, "--api-key="):
 			opts.apiKey = strings.TrimPrefix(arg, "--api-key=")
 		case strings.HasPrefix(arg, "--project-id="):
@@ -230,6 +233,11 @@ func parseArgs(args []string) (options, error) {
 		return opts, errors.New("expected exactly one Phoenix trace URL or trace ID")
 	}
 	opts.traceURL = positionals[0]
+	if !opts.serverSet {
+		if parsed := input.Parse(opts.traceURL); parsed.Server != "" {
+			opts.server = parsed.Server
+		}
+	}
 	return opts, nil
 }
 

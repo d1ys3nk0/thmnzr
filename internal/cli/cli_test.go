@@ -54,6 +54,30 @@ func TestParseArgsDefaultFormatPlain(t *testing.T) {
 	}
 }
 
+func TestParseArgsUsesPhoenixURLServer(t *testing.T) {
+	got, err := parseArgs([]string{"https://phoenix.example.com/projects/project/traces/6eee3b57c1bf0ea5db5eae9d56362bdc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.server != "https://phoenix.example.com" {
+		t.Fatalf("server = %q", got.server)
+	}
+}
+
+func TestParseArgsExplicitServerOverridesPhoenixURL(t *testing.T) {
+	got, err := parseArgs([]string{
+		"--server",
+		"https://override.example.com",
+		"https://phoenix.example.com/projects/project/traces/6eee3b57c1bf0ea5db5eae9d56362bdc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.server != "https://override.example.com" {
+		t.Fatalf("server = %q", got.server)
+	}
+}
+
 func TestParseArgsFormats(t *testing.T) {
 	for _, value := range []string{"plain", "markdown", "json"} {
 		got, err := parseArgs([]string{"--project-id", "project", "--format", value, "6eee3b57c1bf0ea5db5eae9d56362bdc"})

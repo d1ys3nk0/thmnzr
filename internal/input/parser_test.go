@@ -7,6 +7,9 @@ func TestParsePhoenixURL(t *testing.T) {
 	if got.ProjectID != "UHJvamVjdDox" {
 		t.Fatalf("project id = %q", got.ProjectID)
 	}
+	if got.Server != "https://phoenix.example.com" {
+		t.Fatalf("server = %q", got.Server)
+	}
 	if got.ProjectIDDecoded != "Project:1" {
 		t.Fatalf("decoded project id = %q", got.ProjectIDDecoded)
 	}
@@ -22,6 +25,16 @@ func TestParseTraceURL(t *testing.T) {
 	}
 	if got.TraceID != "6eee3b57c1bf0ea5db5eae9d56362bdc" {
 		t.Fatalf("trace id = %q", got.TraceID)
+	}
+}
+
+func TestParsePhoenixSpanURLWithTraceIDPath(t *testing.T) {
+	got := Parse("https://phoenix.example.com/projects/default/spans/6eee3b57c1bf0ea5db5eae9d56362bdc?selectedSpanNodeId=U3BhbjoyMjM=")
+	if got.TraceID != "6eee3b57c1bf0ea5db5eae9d56362bdc" {
+		t.Fatalf("trace id = %q", got.TraceID)
+	}
+	if got.SpanID != "" {
+		t.Fatalf("span id = %q", got.SpanID)
 	}
 }
 

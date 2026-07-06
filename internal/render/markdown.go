@@ -564,8 +564,7 @@ func computeSubtreeStats(span trace.Span, children map[string][]trace.Span, visi
 	}
 	totalTokens := trace.GetTokenCount(span)
 	for _, child := range children[spanID] {
-		childTime, childTokens := computeSubtreeStats(child, children, visited)
-		totalTime += childTime
+		_, childTokens := computeSubtreeStats(child, children, visited)
 		totalTokens += childTokens
 	}
 	return totalTime, totalTokens

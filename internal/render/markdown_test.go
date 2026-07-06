@@ -60,6 +60,34 @@ func TestMarkdownOmitsMissingTokenPlaceholder(t *testing.T) {
 	}
 }
 
+func TestMarkdownUsesOwnDurationForNestedSpans(t *testing.T) {
+	root := trace.Span{
+		"name":       "root",
+		"start_time": "2026-04-29T10:00:00Z",
+		"end_time":   "2026-04-29T10:00:01Z",
+		"context":    map[string]any{"span_id": "rootspan00000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+		"attributes": map[string]any{"llm.token_count.total": float64(3)},
+	}
+	child := trace.Span{
+		"name":       "child",
+		"parent_id":  "rootspan00000001",
+		"start_time": "2026-04-29T10:00:00.100Z",
+		"end_time":   "2026-04-29T10:00:00.900Z",
+		"context":    map[string]any{"span_id": "childspan0000001", "trace_id": "6eee3b57c1bf0ea5db5eae9d56362bdc"},
+		"attributes": map[string]any{"llm.token_count.total": float64(5)},
+	}
+	tree := trace.BuildTree([]trace.Span{root, child})
+	flat := trace.FlattenTree(tree.Children, trace.RootID)
+
+	got := Markdown(tree, flat, Options{Title: "Trace test"})
+	if !strings.Contains(got, "\\-- root [1.00s | 8] rootspan...") {
+		t.Fatalf("markdown should show own duration and subtree tokens for root:\n%s", got)
+	}
+	if strings.Contains(got, "\\-- root [1.80s") {
+		t.Fatalf("markdown should not sum child duration into root duration:\n%s", got)
+	}
+}
+
 func TestMarkdownUsesBackslashForLastBranch(t *testing.T) {
 	root := trace.Span{
 		"name":    "root",

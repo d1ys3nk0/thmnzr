@@ -15,6 +15,7 @@ var (
 
 type Parsed struct {
 	URL              string
+	Server           string
 	ProjectID        string
 	ProjectIDDecoded string
 	TraceID          string
@@ -46,6 +47,9 @@ func ParsePhoenixURL(raw string) Parsed {
 	}
 
 	result := Parsed{URL: raw}
+	if parsedURL.Scheme != "" && parsedURL.Host != "" {
+		result.Server = parsedURL.Scheme + "://" + parsedURL.Host
+	}
 	for i, segment := range segments {
 		switch segment {
 		case "projects":
@@ -55,7 +59,11 @@ func ParsePhoenixURL(raw string) Parsed {
 			}
 		case "spans":
 			if i+1 < len(segments) {
-				result.SpanID = segments[i+1]
+				if traceID := ExtractTraceID(segments[i+1]); traceID != "" {
+					result.TraceID = traceID
+				} else {
+					result.SpanID = segments[i+1]
+				}
 			}
 		case "traces":
 			if i+1 < len(segments) {
